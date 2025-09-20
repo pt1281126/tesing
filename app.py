@@ -155,18 +155,18 @@ def check_self_links_body_only(soup, page_url):
     return self_links
 
 # ---------------- STREAMLIT APP ----------------
-st.title("🔍 Wix Multi-Page Checker: Phone, Email, Body Links & Image ALT Check")
+st.title("🔍 Welcome Ranjit Kumar Mehta")
 
-st.write(
-    "Enter your **Wix preview home page link**, expected **Phone** and **Email**, "
-    "and the tool will scan **all internal pages**.\n\n"
-    "- Only visible phone/email text is counted.\n"
-    "- Checks that only the entered phone/email exist and are linked.\n"
-    "- Flags any other phone/email or links as errors.\n"
-    "- Each page must have at least 2 valid body links to **different internal pages**.\n"
-    "- All images must have ALT, '.' is allowed only at the end.\n"
-    "- Self-links in body/main content are flagged as errors."
-)
+# st.write(
+#     "Enter your **Wix preview home page link**, expected **Phone** and **Email**, "
+#     "and the tool will scan **all internal pages**.\n\n"
+#     "- Only visible phone/email text is counted.\n"
+#     "- Checks that only the entered phone/email exist and are linked.\n"
+#     "- Flags any other phone/email or links as errors.\n"
+#     "- Each page must have at least 2 valid body links to **different internal pages**.\n"
+#     "- All images must have ALT, '.' is allowed only at the end.\n"
+#     "- Self-links in body/main content are flagged as errors."
+# )
 
 url = st.text_input("Enter Wix Preview Home URL")
 phone = st.text_input("Enter Phone Number (with exact spacing)")
