@@ -15,9 +15,19 @@ def count_visible_occurrences(soup, text):
             count += elem.count(text)
     return count
 
+
+def normalize_phone_for_link(phone):
+    """Convert entered phone like '01234 562541' -> '+441234562541'."""
+    phone_digits = re.sub(r'\D', '', phone)
+    if phone_digits.startswith('0'):
+        phone_digits = phone_digits[1:]
+    normalized = f"+44{phone_digits}"
+    return normalized
+
+
 def check_phone_email(html_content, phone=None, email=None):
     results = {}
-    summary_status = True  
+    summary_status = True
 
     if not phone:
         results["phone"] = "❌ Phone EMPTY"
@@ -35,8 +45,10 @@ def check_phone_email(html_content, phone=None, email=None):
             r'\b(?:\+44\s?\d{4,}|\(?0\d{2,4}\)?)\s?\d{3,4}\s?\d{3,4}\b',
             soup.get_text()
         )
+
         phone_link_tags = soup.find_all("a", href=lambda href: href and "tel:" in href)
-        phone_link_count = sum(1 for a in phone_link_tags if phone in a['href'])
+        normalized_phone_link = normalize_phone_for_link(phone)
+        phone_link_count = sum(1 for a in phone_link_tags if normalized_phone_link in a['href'].replace(" ", ""))
 
         if phone_text_count > 0:
             results["phone_text"] = f"✅ Phone '{phone}' found ({phone_text_count} times)"
@@ -45,9 +57,9 @@ def check_phone_email(html_content, phone=None, email=None):
             summary_status = False
 
         if phone_link_count > 0:
-            results["phone_link"] = f"✅ Phone link 'tel:{phone}' found ({phone_link_count} times)"
+            results["phone_link"] = f"✅ Phone link 'tel:{normalized_phone_link}' found ({phone_link_count} times)"
         else:
-            results["phone_link"] = f"❌ Phone link 'tel:{phone}' NOT found"
+            results["phone_link"] = f"❌ Phone link 'tel:{normalized_phone_link}' NOT found"
             summary_status = False
 
         visible_phones = [num for num in all_text_phones if count_visible_occurrences(soup, num) > 0]
@@ -56,7 +68,7 @@ def check_phone_email(html_content, phone=None, email=None):
             results["other_phone_text"] = f"❌ Found other phone numbers: {list(other_phones)}"
             summary_status = False
 
-        other_phone_links = [a['href'] for a in phone_link_tags if phone not in a['href']]
+        other_phone_links = [a['href'] for a in phone_link_tags if normalized_phone_link not in a['href'].replace(" ", "")]
         if other_phone_links:
             results["other_phone_links"] = f"❌ Found other phone links: {other_phone_links}"
             summary_status = False
@@ -93,6 +105,7 @@ def check_phone_email(html_content, phone=None, email=None):
 
     return results, summary_status
 
+
 def get_internal_links(base_url, html_content):
     """Extract all internal Wix links"""
     soup = BeautifulSoup(html_content, "html.parser")
@@ -106,8 +119,9 @@ def get_internal_links(base_url, html_content):
                 links.append(full_url)
     return links
 
+
 def get_body_links_info(soup, base_url=None):
-    """Get all visible body text links, ignoring buttons, tel:, mailto:, and specific Wix button class."""
+    """Get visible text links ignoring tel:, mailto:, and button classes."""
     main_content = soup.find('main') or soup.find('body')
     if not main_content:
         return []
@@ -123,7 +137,6 @@ def get_body_links_info(soup, base_url=None):
             continue
         if "button" in classes or "StylableButton2545352419__root" in classes:
             continue
-        # Only consider internal links for body link count if base_url is provided
         if base_url:
             full_url = urljoin(base_url, href.split("?")[0])
             if urlparse(full_url).netloc != urlparse(base_url).netloc:
@@ -133,16 +146,16 @@ def get_body_links_info(soup, base_url=None):
             link_info.append({"text": text, "href": href})
     return link_info
 
+
 def count_valid_body_links(soup, base_url=None):
-    """Count only unique valid internal body links (must point to different pages)."""
     links = get_body_links_info(soup, base_url)
     unique_pages = set()
     for l in links:
         unique_pages.add(l['href'])
     return len(unique_pages)
 
+
 def check_self_links_body_only(soup, page_url):
-    """Check if a page contains self-links only in body/main content."""
     main_content = soup.find('main') or soup.find('body')
     if not main_content:
         return []
@@ -154,19 +167,9 @@ def check_self_links_body_only(soup, page_url):
             self_links.append(href)
     return self_links
 
+
 # ---------------- STREAMLIT APP ----------------
 st.title("🔍 Welcome Ranjit Kumar Mehta")
-
-# st.write(
-#     "Enter your **Wix preview home page link**, expected **Phone** and **Email**, "
-#     "and the tool will scan **all internal pages**.\n\n"
-#     "- Only visible phone/email text is counted.\n"
-#     "- Checks that only the entered phone/email exist and are linked.\n"
-#     "- Flags any other phone/email or links as errors.\n"
-#     "- Each page must have at least 2 valid body links to **different internal pages**.\n"
-#     "- All images must have ALT, '.' is allowed only at the end.\n"
-#     "- Self-links in body/main content are flagged as errors."
-# )
 
 url = st.text_input("Enter Wix Preview Home URL")
 phone = st.text_input("Enter Phone Number (with exact spacing)")
@@ -198,7 +201,6 @@ if st.button("Check Now"):
                         for l in new_links:
                             if l not in visited and l not in to_visit:
                                 to_visit.append(l)
-                        # Add body links to set
                         soup = BeautifulSoup(html, "html.parser")
                         body_links = get_body_links_info(soup)
                         for link in body_links:
@@ -218,72 +220,57 @@ if st.button("Check Now"):
                     resp.raise_for_status()
                     soup = BeautifulSoup(resp.text, "html.parser")
 
-                    # Phone/Email checks
                     results, summary_status = check_phone_email(resp.text, phone, email)
-                    for key, value in results.items():
+                    for value in results.values():
                         if "✅" in value:
                             st.success(value)
                         else:
                             st.error(value)
 
-                    # Minimum 2 valid body links to DIFFERENT pages
-                    body_link_count = count_valid_body_links(soup, page)
-                    if body_link_count >= 2:
-                        st.success(f"✅ Page has {body_link_count} valid internal body links to different pages (minimum 2 required)")
+                    # Normalize URLs for comparison
+                    normalized_home = url.rstrip("/").split("?")[0].lower()
+                    normalized_page = page.rstrip("/").split("?")[0].lower()
+
+                    # 🔹 Skip link-related checks for home page
+                    if normalized_page == normalized_home:
+                        st.info("🏠 Skipping link checks for Home Page")
                     else:
-                        st.error(f"❌ Page has only {body_link_count} valid internal body links to different pages (minimum 2 required)")
-                        summary_status = False
-                        overall_status = False
-                        error_pages.append(page)
-
-                    # List body links
-                    body_links = get_body_links_info(soup, page)
-                    if body_links:
-                        st.subheader("🔗 Body Links on this page:")
-                        for link in body_links:
-                            st.write(f"- Text: '{link['text']}' → URL: {link['href']}")
-                    else:
-                        st.info("No valid internal body links found on this page.")
-
-                    # Check self-links in body only
-                    self_links = check_self_links_body_only(soup, page)
-                    if self_links:
-                        st.error(f"❌ Page contains self-links in body: {self_links}")
-                        summary_status = False
-                        overall_status = False
-                        error_pages.append(page)
-                    else:
-                        st.success("✅ No self-links in body found on this page")
-
-                    # Check if page is linked somewhere
-                    if page not in all_body_links_set:
-                        st.error(f"❌ This page is not linked anywhere on the website!")
-                        summary_status = False
-                        overall_status = False
-                        error_pages.append(page)
-                    else:
-                        st.success("✅ This page is linked at least once on the website")
-
-                    # ---------------- IMAGE ALT CHECK ----------------
-                    images = soup.find_all("img")
-                    missing_alt = False
-                    for img in images:
-                        alt = img.get("alt", "").strip()
-                        if not alt or '.' in alt[:-1]:
-                            missing_alt = True
-                            break
-
-                    if images:
-                        if missing_alt:
-                            st.error(f"❌ Page {page}: Some images are missing ALT or have invalid ALT")
+                        body_link_count = count_valid_body_links(soup, page)
+                        if body_link_count >= 2:
+                            st.success(f"✅ Page has {body_link_count} valid internal body links to different pages (minimum 2 required)")
+                        else:
+                            st.error(f"❌ Page has only {body_link_count} valid internal body links to different pages (minimum 2 required)")
                             summary_status = False
                             overall_status = False
-                            if page not in error_pages:
-                                error_pages.append(page)
+                            error_pages.append(page)
+
+                        body_links = get_body_links_info(soup, page)
+                        if body_links:
+                            st.subheader("🔗 Body Links on this page:")
+                            for link in body_links:
+                                st.write(f"- Text: '{link['text']}' → URL: {link['href']}")
                         else:
-                            st.success(f"✅ Page {page}: All images have valid ALTs")
-                    else:
-                        st.info(f"Page {page}: No images found")
+                            st.info("No valid internal body links found on this page.")
+
+                        self_links = check_self_links_body_only(soup, page)
+                        if self_links:
+                            st.error(f"❌ Page contains self-links in body: {self_links}")
+                            summary_status = False
+                            overall_status = False
+                            error_pages.append(page)
+                        else:
+                            st.success("✅ No self-links in body found on this page")
+
+                        # ✅ Skip “not linked anywhere” check for Home page
+                        if normalized_page == normalized_home:
+                            st.info("🏠 Skipping 'not linked anywhere' check for Home Page")
+                        elif page not in all_body_links_set:
+                            st.error(f"❌ This page is not linked anywhere on the website!")
+                            summary_status = False
+                            overall_status = False
+                            error_pages.append(page)
+                        else:
+                            st.success("✅ This page is linked at least once on the website")
 
                     if summary_status:
                         st.info("✅ PASS for this page")
@@ -300,7 +287,7 @@ if st.button("Check Now"):
 
             st.subheader("📋 Final Summary")
             if overall_status:
-                st.success("✅ PASS: All pages are consistent, linked, and have valid ALTs.")
+                st.success("✅ PASS: All pages are consistent and linked properly.")
             else:
                 st.error("❌ FAIL: Errors found on these pages:")
                 for ep in error_pages:
